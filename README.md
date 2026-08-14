@@ -24,11 +24,11 @@ cp .env.example .env
 npm run dev
 ```
 
-Abre `http://localhost:5173`.
+Abrir `http://localhost:5173`.
 
 ## 3. Iniciar sesión
 
-Usa cualquiera de estos usuarios de prueba (definidos en `backend/src/data/store.js`):
+Usar cualquiera de estos usuarios de prueba (de momento por que no se han incluido los servicios de Google Cloud)
 
 | Email                 | Password       |
 |------------------------|----------------|
