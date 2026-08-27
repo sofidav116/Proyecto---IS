@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
 import Login from "./pages/Login";
@@ -12,8 +13,8 @@ function ProtectedRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="w-full min-h-screen flex items-center justify-center bg-bg">
-        <p className="text-sm text-muted font-body">Cargando…</p>
+      <div className="w-full min-h-screen flex items-center justify-center bg-bg dark:bg-navyDeep transition-colors">
+        <p className="text-sm text-muted dark:text-faint font-body">Cargando…</p>
       </div>
     );
   }
@@ -37,6 +38,24 @@ function AppRoutes() {
 }
 
 export default function App() {
+  // Sincronización global con el tema del sistema operativo y localStorage
+  useEffect(() => {
+    const root = document.documentElement;
+    const systemQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+    const updateTheme = () => {
+      const savedTheme = localStorage.getItem("theme") || "system";
+      const isDark =
+        savedTheme === "dark" ||
+        (savedTheme === "system" && systemQuery.matches);
+      root.classList.toggle("dark", isDark);
+    };
+
+    updateTheme();
+    systemQuery.addEventListener("change", updateTheme);
+    return () => systemQuery.removeEventListener("change", updateTheme);
+  }, []);
+
   return (
     <HashRouter>
       <AuthProvider>

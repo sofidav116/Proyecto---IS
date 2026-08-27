@@ -16,14 +16,27 @@ export const Pill = ({ tone = "blue", children, icon: Icon }) => (
   </span>
 );
 
-export const Avatar = ({ initials, tone = "bg-blue" }) => (
-  <div
-    className={`flex items-center justify-center rounded-full text-white text-xs font-semibold font-display shrink-0 ${tone}`}
-    style={{ width: 34, height: 34 }}
-  >
-    {initials}
-  </div>
-);
+export const Avatar = ({ initials, src, tone = "bg-blue", size = 34, className = "" }) => {
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt="Avatar"
+        className={`rounded-full object-cover shrink-0 ${className}`}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`flex items-center justify-center rounded-full text-white text-xs font-semibold font-display shrink-0 ${tone} ${className}`}
+      style={{ width: size, height: size }}
+    >
+      {initials}
+    </div>
+  );
+};
 
 export const Logo = ({ light }) => (
   <div className="flex items-center gap-2">

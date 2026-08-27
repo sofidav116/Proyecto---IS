@@ -21,6 +21,8 @@ function initialsFromName(name) {
 
 export const TopBar = ({ title, subtitle, right }) => {
   const { user } = useAuth();
+  const avatarUrl = user?.avatarUrl || localStorage.getItem("user_avatar");
+
   return (
     <div className="flex items-center justify-between px-8 py-5 border-b border-border dark:border-navyCard bg-white dark:bg-navy transition-colors">
       <div>
@@ -29,8 +31,8 @@ export const TopBar = ({ title, subtitle, right }) => {
       </div>
       <div className="flex items-center gap-4">
         {right}
-        <Bell size={18} className="text-muted dark:text-faint" />
-        <Avatar initials={initialsFromName(user?.name)} />
+        <Bell size={18} className="text-muted dark:text-faint cursor-pointer hover:text-ink dark:hover:text-white transition-colors" />
+        <Avatar initials={initialsFromName(user?.name)} src={avatarUrl} size={34} />
       </div>
     </div>
   );
