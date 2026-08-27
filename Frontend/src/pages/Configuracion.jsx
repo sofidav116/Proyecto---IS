@@ -6,9 +6,12 @@ import { useAuth } from "../lib/AuthContext";
 import { api } from "../lib/api";
 
 function initialsFromName(name) {
-  if (!name) return "??";
+  if (!name) return "US";
   const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase();
+  if (parts.length >= 2) {
+    return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
 }
 
 export default function Configuracion() {
@@ -18,6 +21,9 @@ export default function Configuracion() {
   const [error, setError] = useState("");
   const [isZoomOpen, setIsZoomOpen] = useState(false);
   const fileInputRef = useRef(null);
+
+  const fullName = user?.nombre_completo || user?.name || "Usuario";
+  const username = user?.username || "usuario";
 
   const [avatarUrl, setAvatarUrl] = useState(() => {
     return localStorage.getItem("user_avatar") || user?.avatarUrl || "";
@@ -90,11 +96,11 @@ export default function Configuracion() {
           <div className="flex items-center gap-4">
             {/* Foto con trigger de Zoom */}
             <div
-              className="relative group cursor-pointer"
+              className="relative group cursor-pointer shrink-0"
               onClick={() => avatarUrl && setIsZoomOpen(true)}
               title={avatarUrl ? "Clic para ver en grande" : "Sin foto de perfil"}
             >
-              <Avatar initials={initialsFromName(user?.name)} src={avatarUrl} size={56} />
+              <Avatar initials={initialsFromName(fullName)} src={avatarUrl} size={56} />
               {avatarUrl && (
                 <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                   <ZoomIn size={18} className="text-white" />
@@ -110,18 +116,25 @@ export default function Configuracion() {
               className="hidden"
             />
 
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-medium text-ink dark:text-white font-body">{user?.name}</p>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="text-xs text-blue hover:underline cursor-pointer font-body ml-2"
-                >
-                  Cambiar foto
-                </button>
-              </div>
-              <p className="text-xs text-muted dark:text-faint font-body">{user?.role}</p>
+            <div className="flex flex-col justify-center">
+              {/* Nombre Completo en grande */}
+              <h3 className="text-lg font-bold text-ink dark:text-white font-display leading-tight">
+                {fullName}
+              </h3>
+
+              {/* Nombre de usuario en pequeño */}
+              <p className="text-xs text-muted dark:text-faint font-body mt-0.5">
+                @{username}
+              </p>
+
+              {/* Botón cambiar foto */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-xs text-blue hover:underline cursor-pointer font-body mt-2 text-left w-fit"
+              >
+                Cambiar foto
+              </button>
             </div>
           </div>
         </Card>
