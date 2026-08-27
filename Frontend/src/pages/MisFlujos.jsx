@@ -1,10 +1,27 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { PlusCircle, Workflow, ChevronRight, Search } from "lucide-react";
+import { PlusCircle, Workflow, ChevronRight, Search, Loader2 } from "lucide-react";
 import AppShell, { TopBar } from "../components/AppShell";
 import { Card, Pill } from "../components/ui";
-import { FLOWS } from "../lib/mockData";
+import { api } from "../lib/api";
 
 export default function MisFlujos() {
+  const [flows, setFlows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getFlows()
+      .then((res) => !cancelled && setFlows(res.flows))
+      .catch((err) => !cancelled && setError(err.message))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <AppShell>
       <TopBar
@@ -19,7 +36,13 @@ export default function MisFlujos() {
       />
       <div className="flex-1 overflow-auto p-8">
         <div className="flex items-center justify-between mb-6">
-          <p className="text-sm text-muted font-body">{FLOWS.length} flujos en total</p>
+          <p className="text-sm text-muted font-body">
+            {loading ? (
+              <span className="flex items-center gap-2"><Loader2 size={13} className="animate-spin" /> Cargando…</span>
+            ) : (
+              `${flows.length} flujos en total`
+            )}
+          </p>
           <Link
             to="/flujos/nuevo"
             className="rounded-lg text-sm font-semibold text-white px-4 py-2.5 flex items-center gap-2 font-body"
@@ -29,11 +52,13 @@ export default function MisFlujos() {
           </Link>
         </div>
 
+        {error && <p className="text-sm text-red font-body mb-4">Error: {error}</p>}
+
         <Card>
           <div className="grid grid-cols-[2fr_1fr_1fr_1fr_0.6fr] px-6 py-3 text-xs font-semibold text-muted bg-bg font-body">
             <span>Nombre</span><span>Fecha de creación</span><span>Pasos</span><span>Estado</span><span></span>
           </div>
-          {FLOWS.map((f, idx) => (
+          {flows.map((f, idx) => (
             <div
               key={f.id}
               className="grid grid-cols-[2fr_1fr_1fr_1fr_0.6fr] items-center px-6 py-4"

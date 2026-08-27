@@ -1,17 +1,29 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Mail, Lock, ArrowRight } from "lucide-react";
+import { Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
 import { Logo } from "../components/ui";
+import { useAuth } from "../lib/AuthContext";
 
 export default function Login() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const { login } = useAuth();
+  const [email, setEmail] = useState("sofia@smartflow.ai");
+  const [password, setPassword] = useState("smartflow123");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // TODO: conectar a POST /api/auth/login (JWT) cuando el backend esté listo
-    navigate("/dashboard");
+    setError("");
+    setLoading(true);
+    try {
+      await login(email, password);
+      navigate("/dashboard");
+    } catch (err) {
+      setError(err.message || "No se pudo iniciar sesión.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -68,7 +80,7 @@ export default function Login() {
           </div>
 
           <label className="text-xs font-medium mb-1.5 block text-ink font-body">Contraseña</label>
-          <div className="flex items-center gap-2 rounded-lg px-3 mb-6 border border-border bg-white" style={{ height: 44 }}>
+          <div className="flex items-center gap-2 rounded-lg px-3 mb-2 border border-border bg-white" style={{ height: 44 }}>
             <Lock size={16} className="text-faint" />
             <input
               type="password"
@@ -79,16 +91,28 @@ export default function Login() {
             />
           </div>
 
+          {error && <p className="text-xs text-red mb-4 font-body">{error}</p>}
+          {!error && <div className="mb-6" />}
+
           <button
             type="submit"
-            className="w-full rounded-lg text-sm font-semibold text-white py-3 flex items-center justify-center gap-2 font-body"
+            disabled={loading}
+            className="w-full rounded-lg text-sm font-semibold text-white py-3 flex items-center justify-center gap-2 font-body disabled:opacity-70"
             style={{ background: "#0F1B33" }}
           >
-            Entrar al panel <ArrowRight size={15} />
+            {loading ? (
+              <>
+                <Loader2 size={15} className="animate-spin" /> Entrando…
+              </>
+            ) : (
+              <>
+                Entrar al panel <ArrowRight size={15} />
+              </>
+            )}
           </button>
 
           <p className="text-xs text-center mt-5 text-faint font-body">
-            Avance de proyecto · Login visual (sin autenticación real todavía)
+            Demo: sofia@smartflow.ai / smartflow123
           </p>
         </form>
       </div>

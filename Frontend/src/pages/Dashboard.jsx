@@ -1,41 +1,83 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { PlusCircle, Sparkles, TrendingUp, Clock, Gauge, ChevronRight } from "lucide-react";
+import { PlusCircle, Sparkles, TrendingUp, Clock, Gauge, ChevronRight, Loader2 } from "lucide-react";
 import AppShell, { TopBar } from "../components/AppShell";
 import { Card, Pill } from "../components/ui";
-import { FLOWS } from "../lib/mockData";
+import { useAuth } from "../lib/AuthContext";
+import { api } from "../lib/api";
 
-const KPIS = [
-  { label: "Flujos activos", value: "3", delta: "+1 esta semana", icon: Gauge, tone: "text-blue" },
-  { label: "Tiempo ahorrado", value: "2h 30m", delta: "vs. proceso manual", icon: Clock, tone: "text-green" },
-  { label: "Score de optimización", value: "40", delta: "IA sugiere 2 mejoras", icon: TrendingUp, tone: "text-amber" },
-];
+const KPI_META = {
+  flujosActivos: { label: "Flujos activos", icon: Gauge, tone: "text-blue" },
+  tiempoAhorrado: { label: "Tiempo ahorrado", icon: Clock, tone: "text-green" },
+  scoreOptimizacion: { label: "Score de optimización", icon: TrendingUp, tone: "text-amber" },
+};
 
 export default function Dashboard() {
+  const { user } = useAuth();
+  const [kpis, setKpis] = useState(null);
+  const [flows, setFlows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+
+    Promise.all([api.getKpis(), api.getRecentFlows()])
+      .then(([kpisRes, flowsRes]) => {
+        if (cancelled) return;
+        setKpis(kpisRes.kpis);
+        setFlows(flowsRes.flows);
+      })
+      .catch((err) => !cancelled && setError(err.message))
+      .finally(() => !cancelled && setLoading(false));
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <AppShell>
-      <TopBar title="¡Bienvenida, Sofía! 👋" subtitle="Aquí tienes el resumen de la actividad de tus procesos." />
+      <TopBar
+        title={`¡Bienvenida, ${user?.name?.split(" ")[0] || ""}! `}
+        subtitle="Aquí tienes el resumen de la actividad de tus procesos."
+      />
       <div className="flex-1 overflow-auto p-8">
-        <div className="flex items-center justify-between mb-6">
-          <div className="grid grid-cols-3 gap-5 flex-1 mr-6">
-            {KPIS.map((k) => (
-              <Card key={k.label} className="p-5">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-muted font-body">{k.label}</p>
-                  <k.icon size={15} className={k.tone} />
-                </div>
-                <p className={`text-2xl font-semibold font-display ${k.tone}`}>{k.value}</p>
-                <p className="text-xs text-faint font-body mt-1">{k.delta}</p>
-              </Card>
-            ))}
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-muted font-body mb-6">
+            <Loader2 size={14} className="animate-spin" /> Cargando datos del backend…
           </div>
-          <Link
-            to="/flujos/nuevo"
-            className="shrink-0 rounded-lg text-sm font-semibold text-white px-5 py-3 flex items-center gap-2 font-body"
-            style={{ background: "#2F6FED" }}
-          >
-            <PlusCircle size={16} /> Nuevo Flujo
-          </Link>
-        </div>
+        )}
+        {error && <p className="text-sm text-red font-body mb-6">Error: {error}</p>}
+
+        {kpis && (
+          <div className="flex items-center justify-between mb-6">
+            <div className="grid grid-cols-3 gap-5 flex-1 mr-6">
+              {Object.entries(kpis).map(([key, k]) => {
+                const meta = KPI_META[key] || { label: key, icon: Gauge, tone: "text-blue" };
+                return (
+                  <Card key={key} className="p-5">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-muted font-body">{meta.label}</p>
+                      <meta.icon size={15} className={meta.tone} />
+                    </div>
+                    <p className={`text-2xl font-semibold font-display ${meta.tone}`}>{k.value}</p>
+                    <p className="text-xs text-faint font-body mt-1">{k.delta}</p>
+                  </Card>
+                );
+              })}
+            </div>
+            <Link
+              to="/flujos/nuevo"
+              className="shrink-0 rounded-lg text-sm font-semibold text-white px-5 py-3 flex items-center gap-2 font-body"
+              style={{ background: "#2F6FED" }}
+            >
+              <PlusCircle size={16} /> Nuevo Flujo
+            </Link>
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-6">
           <Card className="col-span-2 p-6">
@@ -46,7 +88,7 @@ export default function Dashboard() {
               </Link>
             </div>
             <div className="flex flex-col divide-y divide-border">
-              {FLOWS.map((f) => (
+              {flows.map((f) => (
                 <div key={f.id} className="flex items-center justify-between py-3">
                   <div>
                     <p className="text-sm font-medium text-ink font-body">{f.nombre}</p>
@@ -55,6 +97,9 @@ export default function Dashboard() {
                   <Pill tone={f.estado === "Activo" ? "green" : "amber"}>{f.estado}</Pill>
                 </div>
               ))}
+              {!loading && flows.length === 0 && (
+                <p className="text-xs text-faint font-body py-3">Todavía no tienes flujos.</p>
+              )}
             </div>
           </Card>
 

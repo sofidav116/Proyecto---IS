@@ -4,6 +4,31 @@
 @tailwind utilities;
 
 * { box-sizing: border-box; }
-body { margin: 0; background: #F4F6FB; font-family: 'Inter', sans-serif; }
 
+body { 
+  margin: 0; 
+  font-family: 'Inter', sans-serif; 
+  @apply bg-bg dark:bg-navyDeep text-ink dark:text-white transition-colors duration-200;
+}
+
+/* Reglas de soporte global para texto en modo oscuro */
+html.dark .text-ink {
+  color: #F4F6FB;
+}
+
+html.dark .text-muted {
+  color: #93A0BD;
+}
+
+/* React Flow: Ocultar atribución y soporte para lienzo en modo oscuro */
 .react-flow__attribution { display: none; }
+
+html.dark .react-flow__controls-button {
+  background: #1B2C55;
+  color: #FFFFFF;
+  border-color: #152449;
+}
+
+html.dark .react-flow__controls-button:hover {
+  background: #152449;
+}

@@ -1,8 +1,9 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Workflow, PlusCircle, BarChart3, Settings, LogOut, Bell,
 } from "lucide-react";
 import { Logo, Avatar } from "./ui";
+import { useAuth } from "../lib/AuthContext";
 
 const NAV = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -12,23 +13,40 @@ const NAV = [
   { to: "/configuracion", icon: Settings, label: "Configuración" },
 ];
 
-export const TopBar = ({ title, subtitle, right }) => (
-  <div className="flex items-center justify-between px-8 py-5 border-b border-border bg-white">
-    <div>
-      <h1 className="text-lg font-semibold font-display text-ink">{title}</h1>
-      {subtitle && <p className="text-xs mt-0.5 text-muted font-body">{subtitle}</p>}
+function initialsFromName(name) {
+  if (!name) return "??";
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase();
+}
+
+export const TopBar = ({ title, subtitle, right }) => {
+  const { user } = useAuth();
+  return (
+    <div className="flex items-center justify-between px-8 py-5 border-b border-border dark:border-navyCard bg-white dark:bg-navy transition-colors">
+      <div>
+        <h1 className="text-lg font-semibold font-display text-ink dark:text-white">{title}</h1>
+        {subtitle && <p className="text-xs mt-0.5 text-muted dark:text-faint font-body">{subtitle}</p>}
+      </div>
+      <div className="flex items-center gap-4">
+        {right}
+        <Bell size={18} className="text-muted dark:text-faint" />
+        <Avatar initials={initialsFromName(user?.name)} />
+      </div>
     </div>
-    <div className="flex items-center gap-4">
-      {right}
-      <Bell size={18} className="text-muted" />
-      <Avatar initials="SD" />
-    </div>
-  </div>
-);
+  );
+};
 
 export default function AppShell({ children }) {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/");
+  };
+
   return (
-    <div className="w-full min-h-screen flex bg-bg font-body">
+    <div className="w-full min-h-screen flex bg-bg dark:bg-navyDeep font-body transition-colors">
       <aside
         className="w-[220px] shrink-0 flex flex-col justify-between py-6 px-4"
         style={{ background: "#0F1B33" }}
@@ -54,12 +72,15 @@ export default function AppShell({ children }) {
         </div>
         <div>
           <div className="h-px mb-4" style={{ background: "rgba(255,255,255,0.08)" }} />
-          <div className="flex items-center gap-2.5 px-3 py-2 text-sm text-faint font-body cursor-pointer hover:text-white">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-faint font-body cursor-pointer hover:text-white"
+          >
             <LogOut size={16} /> Cerrar sesión
-          </div>
+          </button>
         </div>
       </aside>
-      <div className="flex-1 flex flex-col min-w-0">{children}</div>
+      <div className="flex-1 flex flex-col min-w-0 bg-bg dark:bg-navyDeep transition-colors">{children}</div>
     </div>
   );
 }
