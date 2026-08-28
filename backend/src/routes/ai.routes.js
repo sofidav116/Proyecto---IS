@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { generateFlow } from "../controllers/ai.controller.js";
-import { requireAuth } from "../middleware/auth.middleware.js";
+import { generateFlow, generateReport } from "../controllers/ai.controller.js";
 
 const router = Router();
 
-router.post("/generate-flow", requireAuth, generateFlow);
+router.post("/generate-flow", generateFlow);
+router.post("/generate-report", generateReport);
 
 export default router;

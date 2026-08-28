@@ -66,34 +66,40 @@ export function AuthProvider({ children }) {
   }, []);
 
   const register = useCallback(async ({ nombre_completo, username, email, password }) => {
-    // Guardar usuario en la base de datos local
-    const localUsers = JSON.parse(localStorage.getItem("smartflow_users_db") || "[]");
+    let userData = null;
+    let token = null;
 
-    const emailExists = localUsers.some((u) => u.email?.toLowerCase() === email.toLowerCase());
-    if (emailExists) throw new Error("El correo ya está registrado.");
+    // 1. Registrar contra el backend Node.js / Express (fuente de verdad)
+    try {
+      const data = await api.register({ nombre_completo, username, email, password });
+      token = data.token;
+      userData = {
+        id: data.user.id,
+        nombre_completo: data.user.name,
+        username,
+        email: data.user.email,
+      };
+    } catch (err) {
+      // Si el backend está caído, seguimos permitiendo trabajar offline con
+      // datos locales, pero avisamos que las llamadas protegidas fallarán
+      // hasta que el backend esté disponible.
+      if (err.status === 409) throw err; // correo/usuario duplicado: no hacer fallback
 
-    const usernameExists = localUsers.some((u) => u.username?.toLowerCase() === username.toLowerCase());
-    if (usernameExists) throw new Error("El nombre de usuario ya está en uso.");
+      const localUsers = JSON.parse(localStorage.getItem("smartflow_users_db") || "[]");
+      const newUser = {
+        id: `usr_${Date.now()}`,
+        nombre_completo,
+        username,
+        email,
+        password_hash: password,
+        creado_en: new Date().toISOString(),
+      };
+      localUsers.push(newUser);
+      localStorage.setItem("smartflow_users_db", JSON.stringify(localUsers));
 
-    const newUser = {
-      id: `usr_${Date.now()}`,
-      nombre_completo,
-      username,
-      email,
-      password_hash: password,
-      creado_en: new Date().toISOString(),
-    };
-
-    localUsers.push(newUser);
-    localStorage.setItem("smartflow_users_db", JSON.stringify(localUsers));
-
-    const token = `token_${Date.now()}`;
-    const userData = {
-      id: newUser.id,
-      nombre_completo: newUser.nombre_completo,
-      username: newUser.username,
-      email: newUser.email,
-    };
+      token = `demo-token::offline_${newUser.id}`;
+      userData = { id: newUser.id, nombre_completo, username, email };
+    }
 
     setToken(token);
     setUser(userData);

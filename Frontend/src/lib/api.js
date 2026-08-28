@@ -45,6 +45,7 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
 export const api = {
   // Auth
   login: (email, password) => request("/auth/login", { method: "POST", body: { email, password }, auth: false }),
+  register: (payload) => request("/auth/register", { method: "POST", body: payload, auth: false }),
   me: () => request("/auth/me"),
 
   // Flujos

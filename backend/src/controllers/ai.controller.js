@@ -1,8 +1,7 @@
-import { generateFlowFromDescription } from "../services/ai.service.js";
+import { generateFlowFromDescription, generateReportFromFlow } from "../services/ai.service.js";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
-// POST /api/ai/generate-flow
 export const generateFlow = asyncHandler(async (req, res) => {
   const { descripcion } = req.body;
 
@@ -10,9 +9,17 @@ export const generateFlow = asyncHandler(async (req, res) => {
     throw new ApiError(400, "El campo 'descripcion' es requerido.");
   }
 
-  // Simula la latencia de una llamada real a Vertex AI / Gemini
-  await new Promise((resolve) => setTimeout(resolve, 900));
-
-  const result = generateFlowFromDescription(descripcion);
+  const result = await generateFlowFromDescription(descripcion);
   res.json(result);
+});
+
+export const generateReport = asyncHandler(async (req, res) => {
+  const flowData = req.body; // Recibe { nombre, nodes, edges, insight, format }
+
+  if (!flowData.nodes || !flowData.nodes.length) {
+    throw new ApiError(400, "Se requieren los nodos del flujo para generar el reporte.");
+  }
+
+  const report = await generateReportFromFlow(flowData);
+  res.json(report);
 });
