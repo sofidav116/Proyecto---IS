@@ -1,95 +1,33 @@
 import { useCallback, useState } from "react";
 import ReactFlow, {
-  Background, Controls, MiniMap, addEdge, useNodesState, useEdgesState, MarkerType,
+  Background, Controls, MiniMap, addEdge, useNodesState, useEdgesState,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { Sparkles, Lightbulb, FileText, FileDown, Loader2, CheckCircle2 } from "lucide-react";
 import AppShell, { TopBar } from "../components/AppShell";
 import { api } from "../lib/api";
+import { layoutNodes, layoutEdges } from "../lib/flowLayout";
 
 const EXAMPLE =
   "Crear un flujo para solicitudes de vacaciones: el empleado envía la solicitud, " +
   "el gerente la revisa, si la aprueba, RRHH verifica días restantes y da el visto " +
   "bueno final. Si se rechaza en algún paso, notificar al empleado.";
 
-// Convierte nodos del backend a React Flow asignando clases dinámicas para Modo Oscuro/Claro
-function layoutNodes(rawNodes, rawEdges) {
-  const outgoing = new Map();
-  rawEdges.forEach((e) => {
-    if (!outgoing.has(e.source)) outgoing.set(e.source, []);
-    outgoing.get(e.source).push(e);
-  });
-
-  const levels = new Map();
-  const visited = new Set();
-  const queue = rawNodes.length ? [[rawNodes[0].id, 0]] : [];
-  while (queue.length) {
-    const [id, depth] = queue.shift();
-    if (visited.has(id)) continue;
-    visited.add(id);
-    levels.set(id, Math.max(levels.get(id) ?? 0, depth));
-    (outgoing.get(id) || []).forEach((e) => queue.push([e.target, depth + 1]));
-  }
-  rawNodes.forEach((n) => {
-    if (!levels.has(n.id)) levels.set(n.id, levels.size);
-  });
-
-  const perLevelCount = new Map();
-  return rawNodes.map((n) => {
-    const depth = levels.get(n.id) ?? 0;
-    const slot = perLevelCount.get(depth) ?? 0;
-    perLevelCount.set(depth, slot + 1);
-
-    const isDecision = n.type === "decision";
-    const isInicio = n.type === "inicio";
-    const isPasoAlternate = n.type === "paso" && depth % 2 === 0;
-
-    // Clases adaptativas para los nodos del lienzo
-    let nodeClass = "rounded-xl border p-3 text-xs font-semibold font-body text-center w-[200px] transition-colors shadow-xs ";
-
-    if (isInicio) {
-      nodeClass += "bg-navyDeep dark:bg-blue text-white border-transparent";
-    } else if (isPasoAlternate) {
-      nodeClass += "bg-greenSoft dark:bg-green/20 text-green dark:text-emerald-400 border-green/30 dark:border-green/40";
-    } else if (isDecision) {
-      nodeClass += "bg-white dark:bg-navy text-ink dark:text-white border-blue dark:border-blue";
-    } else {
-      nodeClass += "bg-white dark:bg-navy text-ink dark:text-white border-border dark:border-navyCard";
-    }
-
-    return {
-      id: n.id,
-      position: { x: 250 + slot * 260 - (perLevelCount.get(depth) > 1 ? 130 : 0), y: depth * 120 },
-      data: { label: n.label },
-      className: nodeClass,
-    };
-  });
-}
-
-function layoutEdges(rawEdges) {
-  return rawEdges.map((e) => {
-    const isNo = e.label === "No";
-    const isSi = e.label === "Sí" || e.label === "Si";
-    return {
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      label: e.label || undefined,
-      style: isNo ? { stroke: "#D6414B" } : isSi ? { stroke: "#12946B" } : undefined,
-      labelStyle: isNo ? { fill: "#D6414B", fontWeight: 700 } : isSi ? { fill: "#12946B", fontWeight: 700 } : undefined,
-      markerEnd: { type: MarkerType.ArrowClosed },
-    };
-  });
-}
 
 export default function CrearFlujo() {
   const [descripcion, setDescripcion] = useState(EXAMPLE);
+  // Fase 3: por defecto se usa la jerarquía real de la organización (flujo
+  // "específico"). Si el admin marca este check, se ignora la jerarquía a
+  // propósito y se pide un flujo "general" (ej: para publicar como plantilla).
+  const [flujoGeneral, setFlujoGeneral] = useState(false);
   const [loading, setLoading] = useState(false);
   const [generated, setGenerated] = useState(false);
   const [error, setError] = useState("");
   const [aiResult, setAiResult] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportText, setReportText] = useState("");
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const onConnect = useCallback((c) => setEdges((eds) => addEdge(c, eds)), [setEdges]);
@@ -99,9 +37,10 @@ export default function CrearFlujo() {
     setLoading(true);
     setGenerated(false);
     setSaved(false);
+    setReportText("");
     setError("");
     try {
-      const result = await api.generateFlow(descripcion);
+      const result = await api.generateFlow(descripcion, flujoGeneral);
       setAiResult(result);
       setNodes(layoutNodes(result.nodes, result.edges));
       setEdges(layoutEdges(result.edges));
@@ -125,12 +64,38 @@ export default function CrearFlujo() {
         nodes: aiResult.nodes,
         edges: aiResult.edges,
         aiInsight: aiResult.insight,
+        // Fase 3: "especifico" si se usó la jerarquía real de la organización,
+        // "general" si el admin pidió explícitamente ignorarla.
+        tipo: aiResult.tipo || (flujoGeneral ? "general" : "especifico"),
       });
       setSaved(true);
     } catch (err) {
       setError(err.message || "No se pudo guardar el flujo.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Fase 4: pide el reporte a la IA Y lo persiste en el backend (Insights_IA /
+  // CLOB), no solo lo muestra en pantalla. Por eso conviene guardar el flujo
+  // primero (para tener un flujoId al que asociar el reporte).
+  const handleGenerarReporte = async () => {
+    if (!aiResult) return;
+    setReportLoading(true);
+    setError("");
+    try {
+      const report = await api.generateReport({
+        nombre: aiResult.nombre,
+        nodes: aiResult.nodes,
+        edges: aiResult.edges,
+        insight: aiResult.insight,
+        format: "pdf",
+      });
+      setReportText(report.contenido);
+    } catch (err) {
+      setError(err.message || "No se pudo generar el reporte.");
+    } finally {
+      setReportLoading(false);
     }
   };
 
@@ -150,6 +115,20 @@ export default function CrearFlujo() {
             className="w-full text-sm rounded-lg border border-border dark:border-navyCard bg-bg dark:bg-navyDeep p-3 text-ink dark:text-white font-body outline-none focus:border-blue resize-none mb-4 transition-colors placeholder:text-muted/60 dark:placeholder:text-faint/50"
             placeholder="Describe tu proceso de negocio en lenguaje natural…"
           />
+
+          <label className="flex items-start gap-2 text-xs text-muted dark:text-faint font-body mb-4 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={flujoGeneral}
+              onChange={(e) => setFlujoGeneral(e.target.checked)}
+              className="mt-0.5 accent-blue"
+            />
+            <span>
+              Generar como flujo <strong className="text-ink dark:text-white">general</strong> (ignora la jerarquía
+              de mi organización — útil para plantillas reutilizables por otras empresas)
+            </span>
+          </label>
+
           <button
             onClick={handleGenerar}
             disabled={loading}
@@ -212,15 +191,34 @@ export default function CrearFlujo() {
 
               <p className="text-xs font-semibold text-ink dark:text-white font-body mb-3">Generación de documentos</p>
               <div className="flex flex-col gap-2">
-                <button className="flex items-center gap-2 text-xs font-medium text-ink dark:text-white border border-border dark:border-navyCard rounded-lg px-3 py-2.5 font-body bg-bg dark:bg-navyDeep hover:border-muted transition-colors">
-                  <FileText size={14} className="text-red" /> Reporte de Eficiencia (PDF)
+                <button
+                  onClick={handleGenerarReporte}
+                  disabled={reportLoading}
+                  className="flex items-center gap-2 text-xs font-medium text-ink dark:text-white border border-border dark:border-navyCard rounded-lg px-3 py-2.5 font-body bg-bg dark:bg-navyDeep hover:border-muted transition-colors disabled:opacity-70"
+                >
+                  {reportLoading ? (
+                    <Loader2 size={14} className="animate-spin text-red" />
+                  ) : (
+                    <FileText size={14} className="text-red" />
+                  )}
+                  {reportLoading ? "Generando reporte…" : "Reporte de Eficiencia (con IA)"}
                 </button>
                 <button className="flex items-center gap-2 text-xs font-medium text-ink dark:text-white border border-border dark:border-navyCard rounded-lg px-3 py-2.5 font-body bg-bg dark:bg-navyDeep hover:border-muted transition-colors">
                   <FileDown size={14} className="text-blue" /> Plantilla de Carta (Word)
                 </button>
               </div>
+              {reportText && (
+                <div className="mt-3 rounded-lg border border-border dark:border-navyCard bg-bg dark:bg-navyDeep p-3 max-h-48 overflow-auto">
+                  <p className="text-[11px] leading-relaxed text-muted dark:text-faint font-body whitespace-pre-wrap">
+                    {reportText}
+                  </p>
+                  <p className="text-[10px] text-green dark:text-emerald-400 font-body mt-2">
+                    ✓ Guardado permanentemente — disponible en Reportes → "Insights de IA guardados"
+                  </p>
+                </div>
+              )}
               <p className="text-[11px] text-faint font-body mt-2">
-                Generación real de PDF/Word: próxima etapa del backend.
+                Generación real de PDF descargable: próxima etapa del backend.
               </p>
             </div>
           )}

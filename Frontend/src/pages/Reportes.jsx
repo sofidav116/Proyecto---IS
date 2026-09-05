@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   FileText,
   Lock,
@@ -11,6 +11,7 @@ import {
   Layers,
 } from "lucide-react";
 import AppShell, { TopBar } from "../components/AppShell";
+import { api } from "../lib/api";
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -26,6 +27,24 @@ export default function Reportes() {
   const [loading, setLoading] = useState(false);
   const [hasPreview, setHasPreview] = useState(false);
   const [previewData, setPreviewData] = useState([]);
+
+  // Fase 4: "Reportes de la IA guardado" — insights ya generados y persistidos
+  // (campo CLOB en el backend), no se regeneran al entrar a esta pantalla.
+  const [insights, setInsights] = useState([]);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState("");
+  const [expandedInsight, setExpandedInsight] = useState(null);
+
+  useEffect(() => {
+    if (activeTab !== "insights-ia") return;
+    setInsightsLoading(true);
+    setInsightsError("");
+    api
+      .getInsights()
+      .then((res) => setInsights(res.insights || []))
+      .catch((err) => setInsightsError(err.message || "No se pudieron cargar los reportes de IA."))
+      .finally(() => setInsightsLoading(false));
+  }, [activeTab]);
 
   const handleGenerarPreview = () => {
     setLoading(true);
@@ -62,6 +81,7 @@ export default function Reportes() {
             { id: "djm", label: "Declaración Jurada Mensual" },
             { id: "descargos", label: "Reporte de Descargos" },
             { id: "ict", label: "ICT (Coeficiente Transformación)" },
+            { id: "insights-ia", label: "Insights de IA Guardados" },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -87,6 +107,87 @@ export default function Reportes() {
         </div>
 
         {/* Grid Principal (items-stretch asegura igual altura para ambos paneles) */}
+        {activeTab === "insights-ia" ? (
+          /* Fase 4: lista de reportes de IA ya guardados, filtrados por
+             organización en el backend. No se regeneran, solo se consultan. */
+          <div className="bg-white dark:bg-[#111827]/90 border border-slate-200 dark:border-slate-800/80 rounded-2xl p-6 shadow-sm dark:shadow-2xl backdrop-blur-xl">
+            <div className="flex items-center gap-2.5 mb-6 pb-4 border-b border-slate-100 dark:border-slate-800/80">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                <Sparkles size={18} />
+              </div>
+              <div>
+                <h2 className="text-base font-bold font-display text-slate-900 dark:text-white tracking-wide">
+                  Reportes de IA Guardados
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Generados desde "Crear Flujo" y guardados permanentemente para tu organización.
+                </p>
+              </div>
+            </div>
+
+            {insightsLoading && (
+              <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500 dark:text-slate-400">
+                <Loader2 size={16} className="animate-spin" /> Cargando reportes guardados…
+              </div>
+            )}
+
+            {!insightsLoading && insightsError && (
+              <p className="text-sm text-red-600 dark:text-red-400 py-6 text-center">{insightsError}</p>
+            )}
+
+            {!insightsLoading && !insightsError && insights.length === 0 && (
+              <div className="text-center py-12 px-4 space-y-2 max-w-md mx-auto">
+                <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/40 rounded-3xl flex items-center justify-center mx-auto text-slate-400 dark:text-slate-500 shadow-inner">
+                  <Sparkles size={36} strokeWidth={1.2} />
+                </div>
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                  Todavía no hay reportes de IA guardados
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Ve a "Crear Flujo" y genera un "Reporte de Eficiencia (con IA)" — quedará aquí guardado.
+                </p>
+              </div>
+            )}
+
+            {!insightsLoading && !insightsError && insights.length > 0 && (
+              <div className="space-y-3">
+                {insights.map((insight) => {
+                  const isOpen = expandedInsight === insight.id;
+                  return (
+                    <div
+                      key={insight.id}
+                      className="rounded-xl border border-slate-200 dark:border-slate-800/80 bg-slate-50/50 dark:bg-[#0b0f19]/60 overflow-hidden"
+                    >
+                      <button
+                        onClick={() => setExpandedInsight(isOpen ? null : insight.id)}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left cursor-pointer"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white">{insight.titulo}</p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {new Date(insight.generatedEn).toLocaleString("es-GT")}
+                            {insight.ahorroEstimadoHoras != null && ` · Ahorro estimado: ${insight.ahorroEstimadoHoras}h`}
+                          </p>
+                        </div>
+                        <ChevronDown
+                          size={16}
+                          className={`shrink-0 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                        />
+                      </button>
+                      {isOpen && (
+                        <div className="px-4 pb-4 pt-1 border-t border-slate-200 dark:border-slate-800/60">
+                          <p className="text-xs leading-relaxed text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-body">
+                            {insight.reporteTexto}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
           
           {/* PANEL IZQUIERDO: Parámetros */}
@@ -297,6 +398,7 @@ export default function Reportes() {
           </div>
 
         </div>
+        )}
       </div>
     </AppShell>
   );

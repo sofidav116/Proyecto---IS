@@ -5,10 +5,13 @@ import {
 import { Logo, Avatar } from "./ui";
 import { useAuth } from "../lib/AuthContext";
 
+// adminOnly: true -> solo se muestra si el usuario logueado tiene rol "admin".
+// Un usuario normal solo consulta flujos, no los crea (ver App.jsx ProtectedRoute
+// para el bloqueo real por si intenta entrar directo por URL).
 const NAV = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/flujos", icon: Workflow, label: "Mis Flujos" },
-  { to: "/flujos/nuevo", icon: PlusCircle, label: "Crear Nuevo" },
+  { to: "/flujos/nuevo", icon: PlusCircle, label: "Crear Nuevo", adminOnly: true },
   { to: "/reportes", icon: BarChart3, label: "Reportes" },
   { to: "/configuracion", icon: Settings, label: "Configuración" },
 ];
@@ -40,12 +43,14 @@ export const TopBar = ({ title, subtitle, right }) => {
 
 export default function AppShell({ children }) {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
 
   const handleLogout = () => {
     logout();
     navigate("/");
   };
+
+  const visibleNav = NAV.filter((item) => !item.adminOnly || user?.role === "admin");
 
   return (
     <div className="w-full min-h-screen flex bg-bg dark:bg-navyDeep font-body transition-colors">
@@ -56,7 +61,7 @@ export default function AppShell({ children }) {
         <div>
           <div className="px-1 mb-8"><Logo light /></div>
           <nav className="flex flex-col gap-1">
-            {NAV.map((item) => (
+            {visibleNav.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}

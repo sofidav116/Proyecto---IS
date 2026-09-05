@@ -4,12 +4,17 @@ import { AuthProvider, useAuth } from "./lib/AuthContext";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import MisFlujos from "./pages/MisFlujos";
+import VerFlujo from "./pages/VerFlujo";
 import CrearFlujo from "./pages/CrearFlujo";
 import Reportes from "./pages/Reportes";
 import Configuracion from "./pages/Configuracion";
 
-function ProtectedRoute({ children }) {
-  const { isAuthenticated, loading } = useAuth();
+// allowedRoles opcional: si se pasa, además de estar logueado, el usuario debe
+// tener uno de esos roles. Ej: <ProtectedRoute allowedRoles={["admin"]}>
+// Así un usuario normal que escriba /flujos/nuevo directo en la URL es
+// redirigido, no solo se le esconde el botón en el menú.
+function ProtectedRoute({ children, allowedRoles }) {
+  const { isAuthenticated, loading, user } = useAuth();
 
   if (loading) {
     return (
@@ -20,6 +25,11 @@ function ProtectedRoute({ children }) {
   }
 
   if (!isAuthenticated) return <Navigate to="/" replace />;
+
+  if (allowedRoles && !allowedRoles.includes(user?.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return children;
 }
 
@@ -29,7 +39,15 @@ function AppRoutes() {
       <Route path="/" element={<Login />} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/flujos" element={<ProtectedRoute><MisFlujos /></ProtectedRoute>} />
-      <Route path="/flujos/nuevo" element={<ProtectedRoute><CrearFlujo /></ProtectedRoute>} />
+      <Route path="/flujos/:id" element={<ProtectedRoute><VerFlujo /></ProtectedRoute>} />
+      <Route
+        path="/flujos/nuevo"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <CrearFlujo />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/reportes" element={<ProtectedRoute><Reportes /></ProtectedRoute>} />
       <Route path="/configuracion" element={<ProtectedRoute><Configuracion /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />

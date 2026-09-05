@@ -4,6 +4,7 @@ import { PlusCircle, Workflow, ChevronRight, Search, Loader2 } from "lucide-reac
 import AppShell, { TopBar } from "../components/AppShell";
 import { Card, Pill } from "../components/ui";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/AuthContext";
 
 // Flujos de respaldo si la API falla o no devuelve datos
 const DEMO_FLOWS = [
@@ -38,6 +39,8 @@ const DEMO_FLOWS = [
 ];
 
 export default function MisFlujos() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [flows, setFlows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -103,12 +106,14 @@ export default function MisFlujos() {
             )}
           </p>
 
-          <Link
-            to="/flujos/nuevo"
-            className="rounded-xl text-sm font-semibold text-white px-4 py-2.5 flex items-center gap-2 font-body bg-blue-600 hover:bg-blue-500 transition-all duration-200 shadow-md shadow-blue-500/20 active:scale-[0.98]"
-          >
-            <PlusCircle size={16} /> Nuevo Flujo
-          </Link>
+          {isAdmin && (
+            <Link
+              to="/flujos/nuevo"
+              className="rounded-xl text-sm font-semibold text-white px-4 py-2.5 flex items-center gap-2 font-body bg-blue-600 hover:bg-blue-500 transition-all duration-200 shadow-md shadow-blue-500/20 active:scale-[0.98]"
+            >
+              <PlusCircle size={16} /> Nuevo Flujo
+            </Link>
+          )}
         </div>
 
         <Card className="overflow-hidden border border-slate-200 dark:border-slate-800/80 rounded-2xl shadow-sm dark:shadow-2xl bg-white dark:bg-[#111827]/90 backdrop-blur-xl">
@@ -156,7 +161,7 @@ export default function MisFlujos() {
                 </div>
 
                 <Link
-                  to="/flujos/nuevo"
+                  to={`/flujos/${f.id}`}
                   className="flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline justify-end font-body"
                 >
                   Abrir <ChevronRight size={14} />

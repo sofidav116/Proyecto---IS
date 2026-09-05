@@ -20,6 +20,27 @@ export function requireAuth(req, _res, next) {
     return next(new ApiError(401, "Token inválido."));
   }
 
-  req.user = { id: user.id, name: user.name, email: user.email, role: user.role };
+  req.user = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    organizationId: user.organizationId,
+  };
   return next();
+}
+
+// requireRole("admin") bloquea la ruta si el usuario logueado no tiene ese rol.
+// Se usa DESPUÉS de requireAuth (necesita req.user ya poblado).
+// Ej: router.post("/", requireAuth, requireRole("admin"), createFlow)
+export function requireRole(...allowedRoles) {
+  return (req, _res, next) => {
+    if (!req.user) {
+      return next(new ApiError(401, "No autenticado."));
+    }
+    if (!allowedRoles.includes(req.user.role)) {
+      return next(new ApiError(403, "No tienes permiso para realizar esta acción."));
+    }
+    return next();
+  };
 }

@@ -5,6 +5,7 @@ import aiRoutes from "./ai.routes.js";
 import dashboardRoutes from "./dashboard.routes.js";
 import reportsRoutes from "./reports.routes.js";
 import usersRoutes from "./users.routes.js";
+import organizationsRoutes from "./organizations.routes.js";
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use("/ai", aiRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/reports", reportsRoutes);
 router.use("/users", usersRoutes);
+router.use("/organizations", organizationsRoutes);
 
 export default router;

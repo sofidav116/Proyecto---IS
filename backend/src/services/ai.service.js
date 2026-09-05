@@ -9,7 +9,11 @@
 import { GoogleGenAI } from "@google/genai";
 import { env, isVertexConfigured } from "../config/env.js";
 
-const SYSTEM_PROMPT = `Eres un asistente experto en modelado y optimización de procesos de negocio (BPM) para PyMEs.
+// Prompt base. Cuando se conoce la jerarquía de la organización (Fase 3),
+// se le agrega un bloque de contexto ANTES de esto (ver buildSystemPrompt),
+// para que el flujo generado respete los niveles/roles reales de esa empresa
+// en vez de asumir una jerarquía genérica.
+const BASE_PROMPT = `Eres un asistente experto en modelado y optimización de procesos de negocio (BPM) para PyMEs.
 A partir de la descripción en lenguaje natural de un proceso, debes devolver EXCLUSIVAMENTE un JSON válido
 (sin markdown, sin texto adicional) con esta forma exacta:
 
@@ -38,6 +42,27 @@ Reglas:
 - "riesgo" en bottlenecks debe ser "Alto" si el tiempo promedio estimado supera 48h, "Medio" si es 24-48h y "Bajo" si es menor.
 - Responde SOLO el JSON, nada más, sin \`\`\`json ni texto alrededor.`;
 
+// Construye el prompt final. Si la organización definió su jerarquía
+// (ej: ["Empleado","Jefe de Área","Gerencia"]), se le antepone al modelo
+// como contexto obligatorio, para que los nodos de tipo "decision"/aprobación
+// usen ESOS niveles reales en vez de inventar un organigrama genérico.
+// Si no hay jerarquía (o el admin pide un flujo "general"), se usa el prompt base.
+function buildSystemPrompt(jerarquia) {
+  if (!Array.isArray(jerarquia) || jerarquia.length === 0) {
+    return BASE_PROMPT;
+  }
+
+  const contexto = `CONTEXTO OBLIGATORIO DE LA ORGANIZACIÓN:
+Esta empresa tiene la siguiente jerarquía, de menor a mayor nivel de autoridad: ${jerarquia.join(" -> ")}.
+Cuando el proceso descrito involucre una aprobación, revisión o validación, el responsable de ese paso
+DEBE ser uno de estos niveles (usa el nombre exacto del nivel en el "label" del nodo, ej: "Aprobación (${jerarquia[jerarquia.length - 1]})").
+No inventes roles o niveles que no estén en esta lista.
+
+`;
+
+  return contexto + BASE_PROMPT;
+}
+
 let aiClient = null;
 function getClient() {
   if (!aiClient) {
@@ -52,26 +77,28 @@ function getClient() {
   return aiClient;
 }
 
-export async function generateFlowFromDescription(descripcion = "") {
+// jerarquia: arreglo de niveles de la organización del usuario que pide el flujo
+// (Fase 3). Si viene vacío/undefined, el flujo generado es "general".
+export async function generateFlowFromDescription(descripcion = "", jerarquia = []) {
   if (isVertexConfigured()) {
     try {
-      return await callGemini(descripcion);
+      return await callGemini(descripcion, jerarquia);
     } catch (err) {
       console.error("[ai.service] Falló Vertex AI/Gemini, usando fallback simulado:", err.message);
-      return simulateFlowGeneration(descripcion);
+      return simulateFlowGeneration(descripcion, jerarquia);
     }
   }
-  return simulateFlowGeneration(descripcion);
+  return simulateFlowGeneration(descripcion, jerarquia);
 }
 
-async function callGemini(descripcion) {
+async function callGemini(descripcion, jerarquia = []) {
   const ai = getClient();
 
   const response = await ai.models.generateContent({
     model: env.vertex.model,
     contents: descripcion,
     config: {
-      systemInstruction: SYSTEM_PROMPT,
+      systemInstruction: buildSystemPrompt(jerarquia),
       responseMimeType: "application/json",
       temperature: 0.4,
     },
@@ -81,10 +108,10 @@ async function callGemini(descripcion) {
   if (!text) throw new Error("Gemini no devolvió texto en la respuesta.");
 
   const parsed = JSON.parse(text);
-  return normalizeAiResult(parsed);
+  return normalizeAiResult(parsed, jerarquia);
 }
 
-function normalizeAiResult(parsed) {
+function normalizeAiResult(parsed, jerarquia = []) {
   const nodes = (parsed.nodes || []).map((n, idx) => ({
     id: String(n.id ?? idx + 1),
     label: n.label,
@@ -102,19 +129,26 @@ function normalizeAiResult(parsed) {
     edges,
     insight: parsed.insight || null,
     bottlenecks: parsed.bottlenecks || [],
+    // Fase 3: si se usó la jerarquía real de una organización, el flujo
+    // queda marcado como "especifico"; si no, es "general".
+    tipo: jerarquia.length > 0 ? "especifico" : "general",
   };
 }
 
 
-function simulateFlowGeneration(descripcion) {
+function simulateFlowGeneration(descripcion, jerarquia = []) {
   const texto = (descripcion || "").toLowerCase();
+  // Nivel de aprobación a usar en el flujo simulado: el más alto de la
+  // jerarquía real de la organización, o "Gerente" genérico si no hay.
+  const nivelAprobador = jerarquia.length > 0 ? jerarquia[jerarquia.length - 1] : "Gerente";
+  const tipo = jerarquia.length > 0 ? "especifico" : "general";
 
   if (texto.includes("vacacion")) {
     return {
       nombre: "Solicitud de Vacaciones",
       nodes: [
         { id: "1", label: "Solicitud de Vacaciones (Empleado)", type: "inicio" },
-        { id: "2", label: "¿Aprobación de Gerente?", type: "decision" },
+        { id: "2", label: `¿Aprobación de ${nivelAprobador}?`, type: "decision" },
         { id: "3", label: "Notificar Empleado", type: "fin" },
         { id: "4", label: "Revisión de RRHH", type: "paso" },
         { id: "5", label: "Verificación de Días Restantes", type: "paso" },
@@ -135,6 +169,7 @@ function simulateFlowGeneration(descripcion) {
         ahorro_estimado_horas: 48,
       },
       bottlenecks: [{ paso: "Revisión de RRHH", tiempo_promedio: "72h", riesgo: "Alto" }],
+      tipo,
     };
   }
 
@@ -169,6 +204,7 @@ function simulateFlowGeneration(descripcion) {
       ahorro_estimado_horas: 12,
     },
     bottlenecks: nodes.length > 2 ? [{ paso: nodes[1].label, tiempo_promedio: "24h", riesgo: "Medio" }] : [],
+    tipo,
   };
 }
 export async function generateReportFromFlow(flowData) {

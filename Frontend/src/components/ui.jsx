@@ -5,6 +5,7 @@ const TONE = {
   amber: "bg-amberSoft text-amber dark:bg-amber/20 dark:text-amber-400",
   red: "bg-redSoft text-red dark:bg-red/20 dark:text-rose-400",
   blue: "bg-blueSoft text-blue dark:bg-blue/20 dark:text-blue-400",
+  gray: "bg-slate-100 text-slate-600 dark:bg-slate-700/40 dark:text-slate-300",
 };
 
 export const Pill = ({ tone = "blue", children, icon: Icon }) => (

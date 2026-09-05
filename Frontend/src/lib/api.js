@@ -56,7 +56,8 @@ export const api = {
   deleteFlow: (id) => request(`/flows/${id}`, { method: "DELETE" }),
 
   // IA
-  generateFlow: (descripcion) => request("/ai/generate-flow", { method: "POST", body: { descripcion } }),
+  generateFlow: (descripcion, general = false) => request("/ai/generate-flow", { method: "POST", body: { descripcion, general } }),
+  generateReport: (flowData) => request("/ai/generate-report", { method: "POST", body: flowData }),
 
   // Dashboard
   getKpis: () => request("/dashboard/kpis"),
@@ -65,7 +66,14 @@ export const api = {
   // Reportes
   getReportsSummary: () => request("/reports/summary"),
   getBottlenecks: () => request("/reports/bottlenecks"),
+  getInsights: () => request("/reports/insights"),
+  getInsightById: (id) => request(`/reports/insights/${id}`),
 
   // Usuarios
   getUsers: () => request("/users"),
+
+  // Organizaciones
+  getMyOrganization: () => request("/organizations/me"),
+  createOrganization: (payload) => request("/organizations", { method: "POST", body: payload }),
+  updateMyHierarchy: (jerarquia) => request("/organizations/me/jerarquia", { method: "PUT", body: { jerarquia } }),
 };
