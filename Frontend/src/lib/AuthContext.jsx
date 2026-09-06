@@ -29,12 +29,28 @@ export function AuthProvider({ children }) {
     try {
       const data = await api.login(identifier, password);
       token = data.token || data.accessToken || `token_${Date.now()}`;
-      userData = data.user || {
-        id: data.id || "usr_1",
-        nombre_completo: data.nombre_completo || data.nombre || "Usuario",
-        username: data.username || identifier.split("@")[0],
-        email: data.email || identifier,
-      };
+
+      // El backend (PostgreSQL) solo guarda "nombre" y "email", no un
+      // "username" separado. Normalizamos aquí todos los alias que usan
+      // las distintas páginas (name, nombre_completo, username, role) para
+      // que no importe cuál de ellos lea cada componente.
+      const backendUser = data.user;
+      userData = backendUser
+        ? {
+            id: backendUser.id,
+            name: backendUser.nombre,
+            nombre_completo: backendUser.nombre,
+            username: backendUser.email?.split("@")[0] || backendUser.nombre,
+            email: backendUser.email,
+            role: backendUser.role,
+            organizationId: backendUser.organizationId,
+          }
+        : {
+            id: data.id || "usr_1",
+            nombre_completo: data.nombre_completo || data.nombre || "Usuario",
+            username: data.username || identifier.split("@")[0],
+            email: data.email || identifier,
+          };
     } catch {
       // 2. Fallback: Si la API del backend falla o el usuario no existe en la BD real,
       // buscamos en la base de datos local guardada al registrarse

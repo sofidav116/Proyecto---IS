@@ -1,73 +1,87 @@
-// Nivel 1 del documento de arquitectura: "Usuario describe proceso → Gemini →
-// Genera workflow". Si hay un proyecto de GCP configurado (.env), llama a
-// Vertex AI + Gemini de verdad. Si no, cae al generador simulado para poder
-// seguir desarrollando sin gastar cuota.
+// Nivel 1 del documento de arquitectura: "Usuario describe proceso → Gemini → Genera workflow".
+// Si hay un proyecto de GCP configurado (.env), llama a Vertex AI + Gemini de verdad.
+// Si no, cae al generador simulado para poder seguir desarrollando sin gastar cuota.
 //
-// Flujo de datos (nunca React → Gemini directo, siempre por el backend):
-//   React → POST /api/ai/generate-flow → este archivo → Vertex AI → Gemini → JSON → React
+// Flujo de datos: React → POST /api/ai/generate-flow → este archivo → Vertex AI → Gemini → JSON → React
 
 import { GoogleGenAI } from "@google/genai";
 import { env, isVertexConfigured } from "../config/env.js";
 
-// Prompt base. Cuando se conoce la jerarquía de la organización (Fase 3),
-// se le agrega un bloque de contexto ANTES de esto (ver buildSystemPrompt),
-// para que el flujo generado respete los niveles/roles reales de esa empresa
-// en vez de asumir una jerarquía genérica.
-const BASE_PROMPT = `Eres un asistente experto en modelado y optimización de procesos de negocio (BPM) para PyMEs.
-A partir de la descripción en lenguaje natural de un proceso, debes devolver EXCLUSIVAMENTE un JSON válido
-(sin markdown, sin texto adicional) con esta forma exacta:
+// Prompt base optimizado profesionalmente para BPM sin restricciones arbitrarias de nodos.
+const BASE_PROMPT = `Actúas como Consultor Senior de Procesos de Negocio (BPM) y Arquitecto de Process Mining de nivel empresarial.
+
+Tu objetivo es analizar minuciosamente la descripción del proceso proporcionada por el usuario y transformarla en un diagrama de flujo de trabajo (workflow) exhaustivo, preciso, ejecutable y adaptado a la escala real de esa organización.
+
+REGLAS STRICTAS DE MODELADO Y ARQUITECTURA:
+
+1. Escala y Granularidad Dinámica (SIN LÍMITES ARBITRARIOS DE NODOS):
+   - NO limites ni restrinja la cantidad de nodos. Modela el proceso con tantos pasos como sean necesarios según la descripción del usuario.
+   - Procesos simples requerirán pocos nodos; procesos complejos de nivel corporativo requerirán múltiples nodos, bifurcaciones y estados de cierre.
+   - Captura la secuencia completa: detonante inicial, tareas operativas, registros en sistemas, validaciones, aprobaciones, notificaciones y todos los posibles finales.
+
+2. Tipología y Estructura Formal de Nodos:
+   - "id": Identificador único en formato string numérico secuencial ("1", "2", "3"...).
+   - "type": Asigna estrictamente uno de los siguientes 4 tipos:
+     * "inicio": Punto de entrada o desencadenante del proceso (debe existir exactamente 1).
+     * "paso": Acción operativa, tarea manual, cálculo, consulta o actualización en sistema.
+     * "decision": Punto condicional de validación, aprobación o evaluación de regla de negocio.
+     * "fin": Estado final alcanzado (éxito, rechazo, cancelación, timeout, etc.).
+   - Regla estricta para "decision": Cada nodo de tipo "decision" DEBE tener obligatoriamente exactamente DOS conexiones (edges) salientes: una con label "Sí" y otra con label "No", apuntando a sus respectivos flujos.
+
+3. Evaluación de Cuellos de Botella (Bottlenecks) e Insights:
+   - Identifica con criterio experto los puntos propensos a burocracia, demoras o errores humanos.
+   - El campo "paso" en "bottlenecks" DEBE ser una coincidencia exacta con el "label" de un nodo existente en el arreglo "nodes".
+   - Riesgo operativo: "Alto" si el tiempo promedio supera 48h, "Medio" si está entre 24h y 48h, y "Bajo" si es inferior a 24h.
+
+4. Formato de Respuesta JSON Estricto:
+Responde EXCLUSIVAMENTE con un objeto JSON válido (sin código Markdown \`\`\`json, sin comentarios ni texto introductorio/final) alineado exactamente a este esquema:
 
 {
-  "nombre": "Nombre corto del flujo",
+  "nombre": "Nombre profesional y ejecutivo del flujo (máx. 6 palabras)",
   "nodes": [
-    { "id": "1", "label": "Texto del paso", "type": "inicio|paso|decision|fin" }
+    { "id": "1", "label": "Descripción clara y accionable del paso", "type": "inicio|paso|decision|fin" }
   ],
   "edges": [
     { "id": "e1-2", "source": "1", "target": "2", "label": "Sí|No|" }
   ],
   "insight": {
-    "optimizacion": "Descripción del cuello de botella principal detectado",
-    "sugerencia": "Sugerencia concreta de automatización o mejora",
+    "optimizacion": "Análisis técnico del principal cuello de botella o falla de diseño en el proceso",
+    "sugerencia": "Recomendación táctica de automatización o reingeniería de procesos",
     "ahorro_estimado_horas": 0
   },
   "bottlenecks": [
-    { "paso": "Nombre del paso", "tiempo_promedio": "72h", "riesgo": "Alto|Medio|Bajo" }
+    { "paso": "Nombre exacto del paso (coincidente con label de nodes)", "tiempo_promedio": "48h", "riesgo": "Alto|Medio|Bajo" }
   ]
-}
+}`;
 
-Reglas:
-- Usa entre 4 y 10 nodos según la complejidad del proceso descrito.
-- Los "id" de nodos son strings únicos ("1","2",...).
-- Marca decisiones (if/aprueba/rechaza) con type "decision" y crea dos edges de salida etiquetados "Sí" / "No".
-- "riesgo" en bottlenecks debe ser "Alto" si el tiempo promedio estimado supera 48h, "Medio" si es 24-48h y "Bajo" si es menor.
-- Responde SOLO el JSON, nada más, sin \`\`\`json ni texto alrededor.`;
+// Construye el prompt final añadiendo el contexto REAL de la organización
+function buildSystemPrompt(jerarquia, tipoIndustria) {
+  const bloques = [];
 
-// Construye el prompt final. Si la organización definió su jerarquía
-// (ej: ["Empleado","Jefe de Área","Gerencia"]), se le antepone al modelo
-// como contexto obligatorio, para que los nodos de tipo "decision"/aprobación
-// usen ESOS niveles reales en vez de inventar un organigrama genérico.
-// Si no hay jerarquía (o el admin pide un flujo "general"), se usa el prompt base.
-function buildSystemPrompt(jerarquia) {
-  if (!Array.isArray(jerarquia) || jerarquia.length === 0) {
-    return BASE_PROMPT;
+  if (Array.isArray(jerarquia) && jerarquia.length > 0) {
+    bloques.push(`CONTEXTO OBLIGATORIO — ESTRUCTURA REAL DE ESTA ORGANIZACIÓN:
+Esta empresa tiene EXACTAMENTE los siguientes roles/niveles, de menor a mayor nivel de autoridad:
+${jerarquia.join(" → ")}.
+Reglas estrictas sobre esto:
+- Cuando el proceso descrito involucre una aprobación, revisión o validación, el responsable de ese paso DEBE ser uno de estos roles exactos (usa el nombre tal cual aparece en la lista dentro del "label" del nodo, ej: "Aprobación (${jerarquia[jerarquia.length - 1]})").
+- NO inventes cargos, comités, departamentos o niveles que no estén en esta lista.
+- Si el proceso parece requerir más niveles de aprobación de los que existen aquí, reutiliza el nivel más alto disponible en la lista en vez de crear uno nuevo.`);
+  } else {
+    bloques.push(`Esta empresa no tiene una jerarquía corporativa formal registrada: usa únicamente los roles o responsables que el propio usuario mencione o dé a entender en su descripción (ej. "el encargado", "quien recibe el pedido"). NO asumas por defecto la existencia de gerentes, directores o juntas directivas si el usuario no los menciona.`);
   }
 
-  const contexto = `CONTEXTO OBLIGATORIO DE LA ORGANIZACIÓN:
-Esta empresa tiene la siguiente jerarquía, de menor a mayor nivel de autoridad: ${jerarquia.join(" -> ")}.
-Cuando el proceso descrito involucre una aprobación, revisión o validación, el responsable de ese paso
-DEBE ser uno de estos niveles (usa el nombre exacto del nivel en el "label" del nodo, ej: "Aprobación (${jerarquia[jerarquia.length - 1]})").
-No inventes roles o niveles que no estén en esta lista.
+  if (tipoIndustria && tipoIndustria.trim() && tipoIndustria.trim().toLowerCase() !== "general") {
+    bloques.push(`SECTOR / GIRO DE ESTA EMPRESA: "${tipoIndustria.trim()}".
+Adapta el vocabulario, la terminología técnica, los nombres de los pasos y los ejemplos de bottlenecks a las buenas prácticas operativas de este sector concreto.`);
+  }
 
-`;
-
-  return contexto + BASE_PROMPT;
+  if (bloques.length === 0) return BASE_PROMPT;
+  return bloques.join("\n\n") + "\n\n" + BASE_PROMPT;
 }
 
 let aiClient = null;
 function getClient() {
   if (!aiClient) {
-    // Con vertexai:true y sin apiKey, el SDK se autentica solo leyendo
-    // GOOGLE_APPLICATION_CREDENTIALS (la cuenta de servicio) del .env
     aiClient = new GoogleGenAI({
       vertexai: true,
       project: env.vertex.project,
@@ -77,30 +91,28 @@ function getClient() {
   return aiClient;
 }
 
-// jerarquia: arreglo de niveles de la organización del usuario que pide el flujo
-// (Fase 3). Si viene vacío/undefined, el flujo generado es "general".
-export async function generateFlowFromDescription(descripcion = "", jerarquia = []) {
+export async function generateFlowFromDescription(descripcion = "", jerarquia = [], tipoIndustria = "") {
   if (isVertexConfigured()) {
     try {
-      return await callGemini(descripcion, jerarquia);
+      return await callGemini(descripcion, jerarquia, tipoIndustria);
     } catch (err) {
       console.error("[ai.service] Falló Vertex AI/Gemini, usando fallback simulado:", err.message);
-      return simulateFlowGeneration(descripcion, jerarquia);
+      return simulateFlowGeneration(descripcion, jerarquia, tipoIndustria);
     }
   }
-  return simulateFlowGeneration(descripcion, jerarquia);
+  return simulateFlowGeneration(descripcion, jerarquia, tipoIndustria);
 }
 
-async function callGemini(descripcion, jerarquia = []) {
+async function callGemini(descripcion, jerarquia = [], tipoIndustria = "") {
   const ai = getClient();
 
   const response = await ai.models.generateContent({
     model: env.vertex.model,
     contents: descripcion,
     config: {
-      systemInstruction: buildSystemPrompt(jerarquia),
+      systemInstruction: buildSystemPrompt(jerarquia, tipoIndustria),
       responseMimeType: "application/json",
-      temperature: 0.4,
+      temperature: 0.3, // Temperatura baja para respuestas más estructuradas y precisas
     },
   });
 
@@ -129,19 +141,15 @@ function normalizeAiResult(parsed, jerarquia = []) {
     edges,
     insight: parsed.insight || null,
     bottlenecks: parsed.bottlenecks || [],
-    // Fase 3: si se usó la jerarquía real de una organización, el flujo
-    // queda marcado como "especifico"; si no, es "general".
     tipo: jerarquia.length > 0 ? "especifico" : "general",
   };
 }
 
-
-function simulateFlowGeneration(descripcion, jerarquia = []) {
+function simulateFlowGeneration(descripcion, jerarquia = [], tipoIndustria = "") {
   const texto = (descripcion || "").toLowerCase();
-  // Nivel de aprobación a usar en el flujo simulado: el más alto de la
-  // jerarquía real de la organización, o "Gerente" genérico si no hay.
-  const nivelAprobador = jerarquia.length > 0 ? jerarquia[jerarquia.length - 1] : "Gerente";
+  const nivelAprobador = jerarquia.length > 0 ? jerarquia[jerarquia.length - 1] : "Responsable";
   const tipo = jerarquia.length > 0 ? "especifico" : "general";
+  const sector = tipoIndustria && tipoIndustria.trim() ? tipoIndustria.trim() : null;
 
   if (texto.includes("vacacion")) {
     return {
@@ -173,13 +181,7 @@ function simulateFlowGeneration(descripcion, jerarquia = []) {
     };
   }
 
-  const oraciones = descripcion
-    .split(/[.;\n]/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 5);
-
-  const base = oraciones.length ? oraciones : ["Inicio del proceso", "Revisión", "Aprobación", "Fin del proceso"];
+  const base = splitIntoSteps(descripcion);
 
   const nodes = base.map((t, idx) => ({
     id: String(idx + 1),
@@ -200,13 +202,46 @@ function simulateFlowGeneration(descripcion, jerarquia = []) {
     edges,
     insight: {
       optimizacion: "Se detectaron pasos manuales que podrían automatizarse.",
-      sugerencia: "Revisa los pasos intermedios para integrarlos con tus sistemas existentes.",
+      sugerencia: sector
+        ? `Revisa los pasos intermedios para integrarlos con las herramientas típicas de una empresa de ${sector}.`
+        : "Revisa los pasos intermedios para integrarlos con tus sistemas existentes.",
       ahorro_estimado_horas: 12,
     },
     bottlenecks: nodes.length > 2 ? [{ paso: nodes[1].label, tiempo_promedio: "24h", riesgo: "Medio" }] : [],
     tipo,
   };
 }
+
+function splitIntoSteps(descripcion) {
+  const cleaned = (descripcion || "")
+    .trim()
+    .replace(/^["“”']+|["“”']+$/g, "")
+    .trim();
+
+  const MIN_LEN = 4;
+
+  let parts = cleaned
+    .split(/[.\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= MIN_LEN);
+
+  if (parts.length <= 1) {
+    parts = cleaned
+      .split(/,| y (?=[a-záéíóúñ])/i)
+      .map((s) => s.trim())
+      .filter((s) => s.length >= MIN_LEN);
+  }
+
+  if (parts.length === 0) {
+    return ["Inicio del proceso", "Revisión", "Aprobación", "Fin del proceso"];
+  }
+  if (parts.length === 1) {
+    return [parts[0], "Revisión", "Fin del proceso"];
+  }
+
+  return parts;
+}
+
 export async function generateReportFromFlow(flowData) {
   const { nombre, nodes, edges, insight, format = "pdf" } = flowData;
 

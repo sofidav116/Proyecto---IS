@@ -4,10 +4,11 @@ import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 // POST /api/ai/generate-flow
-// Fase 3: se busca la jerarquía de la organización del usuario logueado y se
-// le pasa al servicio de IA, para que el flujo generado sea específico a esa
-// empresa (no un organigrama genérico). Si el admin pide explícitamente un
-// flujo "general" (body.general === true), se ignora la jerarquía a propósito.
+// Fase 3: se busca la jerarquía Y el sector/industria de la organización del
+// usuario logueado y se le pasan al servicio de IA, para que el flujo
+// generado sea específico a esa empresa (no un organigrama genérico ni un
+// vocabulario de un sector distinto al suyo). Si el admin pide explícitamente
+// un flujo "general" (body.general === true), se ignora ese contexto a propósito.
 export const generateFlow = asyncHandler(async (req, res) => {
   const { descripcion, general = false } = req.body;
 
@@ -16,12 +17,14 @@ export const generateFlow = asyncHandler(async (req, res) => {
   }
 
   let jerarquia = [];
+  let tipoIndustria = "";
   if (!general) {
     const org = organizations.find((o) => o.id === req.user.organizationId);
     jerarquia = org?.jerarquia || [];
+    tipoIndustria = org?.tipo_industria || "";
   }
 
-  const result = await generateFlowFromDescription(descripcion, jerarquia);
+  const result = await generateFlowFromDescription(descripcion, jerarquia, tipoIndustria);
   res.json(result);
 });
 

@@ -46,3 +46,33 @@ export const updateMyHierarchy = asyncHandler(async (req, res) => {
   org.jerarquia = jerarquia;
   res.json({ organization: org });
 });
+
+// PUT /api/organizations/me  (solo admin)
+// Actualiza el perfil de la propia organización: su sector/industria y/o su
+// jerarquía de roles. Ambos datos son el contexto que luego se le pasa a la
+// IA (ver ai.controller.js) para que los flujos generados encajen con ESTA
+// empresa en particular, en vez de asumir una estructura o sector genéricos.
+// Los campos son parciales: solo se actualiza lo que venga en el body.
+export const updateMyOrganization = asyncHandler(async (req, res) => {
+  const { nombre, tipo_industria, jerarquia } = req.body;
+
+  const org = organizations.find((o) => o.id === req.user.organizationId);
+  if (!org) throw new ApiError(404, "Organización no encontrada.");
+
+  if (jerarquia !== undefined) {
+    if (!Array.isArray(jerarquia) || jerarquia.length === 0) {
+      throw new ApiError(400, "'jerarquia' debe ser un arreglo con al menos un nivel.");
+    }
+    org.jerarquia = jerarquia.map((s) => String(s).trim()).filter(Boolean);
+  }
+
+  if (typeof nombre === "string" && nombre.trim()) {
+    org.nombre = nombre.trim();
+  }
+
+  if (typeof tipo_industria === "string" && tipo_industria.trim()) {
+    org.tipo_industria = tipo_industria.trim();
+  }
+
+  res.json({ organization: org });
+});

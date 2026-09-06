@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
-import { Loader2, Sun, Moon, Monitor, Camera, X, ZoomIn } from "lucide-react";
+import { Loader2, Sun, Moon, Monitor, Camera, X, ZoomIn, Building2, Plus, Trash2, CheckCircle2 } from "lucide-react";
 import AppShell, { TopBar } from "../components/AppShell";
-import { Card, Avatar } from "../components/ui";
+import { Card, Avatar, Pill } from "../components/ui";
 import { useAuth } from "../lib/AuthContext";
 import { api } from "../lib/api";
 
@@ -16,11 +16,23 @@ function initialsFromName(name) {
 
 export default function Configuracion() {
   const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [team, setTeam] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isZoomOpen, setIsZoomOpen] = useState(false);
   const fileInputRef = useRef(null);
+
+  // --- Organización: sector/industria + jerarquía real de roles ---
+  // Esto es el contexto que se le pasa a la IA al generar flujos, para que
+  // no asuma gerentes, juntas directivas u otros roles que esta empresa en
+  // particular no tenga, y para que el vocabulario encaje con su sector.
+  const [orgLoading, setOrgLoading] = useState(true);
+  const [orgError, setOrgError] = useState("");
+  const [industria, setIndustria] = useState("");
+  const [niveles, setNiveles] = useState([""]);
+  const [savingOrg, setSavingOrg] = useState(false);
+  const [savedOrg, setSavedOrg] = useState(false);
 
   const fullName = user?.nombre_completo || user?.name || "Usuario";
   const username = user?.username || "usuario";
@@ -66,6 +78,57 @@ export default function Configuracion() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getMyOrganization()
+      .then((res) => {
+        if (cancelled) return;
+        const org = res.organization;
+        setIndustria(org?.tipo_industria || "");
+        setNiveles(org?.jerarquia?.length ? org.jerarquia : [""]);
+      })
+      .catch((err) => !cancelled && setOrgError(err.message || "No se pudo cargar la organización."))
+      .finally(() => !cancelled && setOrgLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleNivelChange = (idx, value) => {
+    setSavedOrg(false);
+    setNiveles((n) => n.map((v, i) => (i === idx ? value : v)));
+  };
+
+  const handleAddNivel = () => {
+    setSavedOrg(false);
+    setNiveles((n) => n.concat(""));
+  };
+
+  const handleRemoveNivel = (idx) => {
+    setSavedOrg(false);
+    setNiveles((n) => (n.length > 1 ? n.filter((_, i) => i !== idx) : n));
+  };
+
+  const handleGuardarOrganizacion = async () => {
+    const jerarquiaLimpia = niveles.map((n) => n.trim()).filter(Boolean);
+    if (jerarquiaLimpia.length === 0) {
+      setOrgError("Agrega al menos un nivel de tu organización (ej. \"Empleado\").");
+      return;
+    }
+    setSavingOrg(true);
+    setOrgError("");
+    try {
+      await api.updateMyOrganization({ tipo_industria: industria.trim(), jerarquia: jerarquiaLimpia });
+      setNiveles(jerarquiaLimpia);
+      setSavedOrg(true);
+    } catch (err) {
+      setOrgError(err.message || "No se pudo guardar la organización.");
+    } finally {
+      setSavingOrg(false);
+    }
+  };
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -166,6 +229,117 @@ export default function Configuracion() {
               );
             })}
           </div>
+        </Card>
+
+        {/* Card de Organización — contexto real para la IA (sector + jerarquía) */}
+        <Card className="p-6 mb-6">
+          <div className="flex items-center gap-2 mb-1">
+            <Building2 size={15} className="text-blue" />
+            <h2 className="text-sm font-semibold font-display text-ink dark:text-white">
+              Organización
+            </h2>
+          </div>
+          <p className="text-xs text-muted dark:text-faint font-body mb-4">
+            Este es el contexto real que usa la IA al generar flujos: solo usará los roles que
+            definas aquí (si no tienes "Gerente" o "Junta Directiva", no aparecerán) y adaptará el
+            vocabulario al sector que indiques.
+          </p>
+
+          {orgLoading ? (
+            <div className="flex items-center gap-2 text-xs text-muted dark:text-faint font-body">
+              <Loader2 size={13} className="animate-spin" /> Cargando organización…
+            </div>
+          ) : (
+            <>
+              <label className="text-xs font-semibold text-ink dark:text-white font-body mb-1.5 block">
+                Sector / tipo de empresa
+              </label>
+              {isAdmin ? (
+                <input
+                  value={industria}
+                  onChange={(e) => {
+                    setIndustria(e.target.value);
+                    setSavedOrg(false);
+                  }}
+                  placeholder='Ej. "Restaurante", "Clínica dental", "Software", "Retail"…'
+                  className="w-full text-sm rounded-lg border border-border dark:border-navyCard bg-bg dark:bg-navyDeep p-2.5 text-ink dark:text-white font-body outline-none focus:border-blue mb-4 transition-colors"
+                />
+              ) : (
+                <p className="text-sm text-ink dark:text-white font-body mb-4">
+                  {industria || "Sin definir"}
+                </p>
+              )}
+
+              <label className="text-xs font-semibold text-ink dark:text-white font-body mb-1.5 block">
+                Jerarquía de roles (de menor a mayor autoridad)
+              </label>
+
+              {isAdmin ? (
+                <>
+                  <div className="flex flex-col gap-2 mb-3">
+                    {niveles.map((nivel, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <span className="text-[11px] text-faint font-body w-4 shrink-0">{idx + 1}.</span>
+                        <input
+                          value={nivel}
+                          onChange={(e) => handleNivelChange(idx, e.target.value)}
+                          placeholder={idx === 0 ? "Ej. Empleado" : "Ej. Dueño del negocio"}
+                          className="flex-1 text-sm rounded-lg border border-border dark:border-navyCard bg-bg dark:bg-navyDeep p-2 text-ink dark:text-white font-body outline-none focus:border-blue transition-colors"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveNivel(idx)}
+                          disabled={niveles.length <= 1}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-red border border-red/20 bg-redSoft dark:bg-red/10 disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90 transition-colors cursor-pointer shrink-0"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddNivel}
+                    className="flex items-center gap-1.5 text-xs font-medium text-blue border border-blue/30 rounded-lg px-3 py-2 font-body bg-blueSoft dark:bg-blue/10 hover:opacity-90 transition-colors cursor-pointer mb-4"
+                  >
+                    <Plus size={13} /> Agregar nivel
+                  </button>
+
+                  {orgError && <p className="text-xs text-red font-body mb-3">{orgError}</p>}
+
+                  <button
+                    type="button"
+                    onClick={handleGuardarOrganizacion}
+                    disabled={savingOrg}
+                    className={`flex items-center justify-center gap-2 text-xs font-semibold text-white rounded-lg px-4 py-2.5 font-body disabled:opacity-70 transition-colors cursor-pointer ${
+                      savedOrg ? "bg-green dark:bg-emerald-600" : "bg-blue hover:bg-blue/90"
+                    }`}
+                  >
+                    {savingOrg ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin" /> Guardando…
+                      </>
+                    ) : savedOrg ? (
+                      <>
+                        <CheckCircle2 size={13} /> Guardado
+                      </>
+                    ) : (
+                      "Guardar organización"
+                    )}
+                  </button>
+                </>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {niveles.filter(Boolean).map((nivel, idx) => (
+                    <Pill key={idx} tone="blue">
+                      {nivel}
+                    </Pill>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </Card>
 
         {/* Card de Equipo */}

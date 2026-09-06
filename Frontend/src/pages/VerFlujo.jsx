@@ -4,6 +4,7 @@ import ReactFlow, { Background, Controls, MiniMap, useNodesState, useEdgesState 
 import "reactflow/dist/style.css";
 import { ArrowLeft, Loader2, Lightbulb } from "lucide-react";
 import AppShell, { TopBar } from "../components/AppShell";
+import FlowZoomControls from "../components/FlowZoomControls";
 import { Card, Pill } from "../components/ui";
 import { api } from "../lib/api";
 import { layoutNodes, layoutEdges } from "../lib/flowLayout";
@@ -84,6 +85,7 @@ export default function VerFlujo() {
               >
                 <Background />
                 <Controls showInteractive={false} />
+                <FlowZoomControls />
                 <MiniMap pannable zoomable />
               </ReactFlow>
             </Card>

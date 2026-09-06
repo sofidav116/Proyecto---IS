@@ -76,4 +76,9 @@ export const api = {
   getMyOrganization: () => request("/organizations/me"),
   createOrganization: (payload) => request("/organizations", { method: "POST", body: payload }),
   updateMyHierarchy: (jerarquia) => request("/organizations/me/jerarquia", { method: "PUT", body: { jerarquia } }),
+  // payload: { nombre?, tipo_industria?, jerarquia? } — actualización parcial,
+  // usado desde Configuración para que la IA genere flujos acordes al tipo
+  // de empresa y a la jerarquía real (sin asumir gerentes/juntas directivas
+  // que esa empresa no tenga).
+  updateMyOrganization: (payload) => request("/organizations/me", { method: "PUT", body: payload }),
 };

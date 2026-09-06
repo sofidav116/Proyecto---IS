@@ -1,63 +1,72 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { PlusCircle, Workflow, ChevronRight, Search, Loader2 } from "lucide-react";
 import AppShell, { TopBar } from "../components/AppShell";
 import { Card, Pill } from "../components/ui";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/AuthContext";
 
-// Flujos de respaldo si la API falla o no devuelve datos
-const DEMO_FLOWS = [
-  {
-    id: "fl-01",
-    nombre: "Declaración Jurada Mensual (DJM)",
-    fecha: "2026-08-25",
-    pasos: 8,
-    estado: "Activo",
-  },
-  {
-    id: "fl-02",
-    nombre: "Aprobación de Órdenes de Compra",
-    fecha: "2026-08-22",
-    pasos: 5,
-    estado: "Activo",
-  },
-  {
-    id: "fl-03",
-    nombre: "Onboarding de Nuevos Empleados",
-    fecha: "2026-08-18",
-    pasos: 6,
-    estado: "En Pausa",
-  },
-  {
-    id: "fl-04",
-    nombre: "Revisión de Descargos e ICT",
-    fecha: "2026-08-10",
-    pasos: 4,
-    estado: "Activo",
-  },
-];
-
 export default function MisFlujos() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const isAdmin = user?.role === "admin";
+  
   const [flows, setFlows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Normaliza la estructura del backend evitando errores de runtime
+  const normalizeFlow = (f) => {
+    // Parseo seguro de fecha
+    let formattedDate = "Reciente";
+    const rawDate = f.fecha || f.created_at || f.createdAt;
+    if (rawDate) {
+      try {
+        const parsed = new Date(rawDate);
+        if (!isNaN(parsed.getTime())) {
+          formattedDate = parsed.toISOString().split("T")[0];
+        }
+      } catch (e) {
+        formattedDate = "Reciente";
+      }
+    }
+
+    // Extracción exhaustiva de pasos/nodos (JSON o Arrays)
+    let stepsData = f.pasos || f.nodes || f.steps || f.diagrama?.nodes || f.pasos_json || [];
+    if (typeof stepsData === "string") {
+      try { stepsData = JSON.parse(stepsData); } catch (e) { stepsData = []; }
+    }
+    if (!Array.isArray(stepsData) && typeof stepsData === "object" && stepsData !== null) {
+      stepsData = stepsData.nodes || stepsData.pasos || stepsData.steps || [];
+    }
+
+    const totalPasos = Array.isArray(stepsData)
+      ? stepsData.length
+      : (typeof f.pasos === "number" ? f.pasos : 0);
+
+    return {
+      id: f.id || f.id_flujo || f._id,
+      nombre: f.nombre || f.title || f.name || "Flujo sin nombre",
+      fecha: formattedDate,
+      pasos: totalPasos,
+      estado: f.estado || f.status || "Activo",
+    };
+  };
+
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+
     api
       .getFlows()
       .then((res) => {
         if (!cancelled) {
-          const list = Array.isArray(res) ? res : res?.flows || [];
-          setFlows(list.length > 0 ? list : DEMO_FLOWS);
+          const rawList = Array.isArray(res) ? res : res?.flows || res?.data || [];
+          setFlows(rawList.map(normalizeFlow));
         }
       })
-      .catch(() => {
-        // Fallback automático a datos demo si no hay sesión activa
-        if (!cancelled) setFlows(DEMO_FLOWS);
+      .catch((err) => {
+        console.error("Error al obtener los flujos:", err);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -81,7 +90,7 @@ export default function MisFlujos() {
         title="Mis Flujos"
         subtitle="Procesos que has creado o generado con IA."
         right={
-          <div className="flex items-center gap-2 rounded-xl px-3 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 shadow-sm transition-colors h-[36px]">
+          <div className="flex items-center gap-2 rounded-xl px-3 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 shadow-sm h-[36px]">
             <Search size={14} className="text-slate-400 dark:text-slate-500" />
             <input
               type="text"
@@ -99,21 +108,19 @@ export default function MisFlujos() {
           <p className="text-sm text-slate-500 dark:text-slate-400 font-body">
             {loading ? (
               <span className="flex items-center gap-2">
-                <Loader2 size={14} className="animate-spin text-blue-500" /> Cargando…
+                <Loader2 size={14} className="animate-spin text-blue-500" /> Cargando flujos...
               </span>
             ) : (
-              `${filteredFlows.length} flujos en total`
+              `${filteredFlows.length} flujos registrados`
             )}
           </p>
 
-          {isAdmin && (
-            <Link
-              to="/flujos/nuevo"
-              className="rounded-xl text-sm font-semibold text-white px-4 py-2.5 flex items-center gap-2 font-body bg-blue-600 hover:bg-blue-500 transition-all duration-200 shadow-md shadow-blue-500/20 active:scale-[0.98]"
-            >
-              <PlusCircle size={16} /> Nuevo Flujo
-            </Link>
-          )}
+          <Link
+            to="/flujos/nuevo"
+            className="rounded-xl text-sm font-semibold text-white px-4 py-2.5 flex items-center gap-2 font-body bg-blue-600 hover:bg-blue-500 transition-all duration-200 shadow-md shadow-blue-500/20 active:scale-[0.98]"
+          >
+            <PlusCircle size={16} /> Nuevo Flujo
+          </Link>
         </div>
 
         <Card className="overflow-hidden border border-slate-200 dark:border-slate-800/80 rounded-2xl shadow-sm dark:shadow-2xl bg-white dark:bg-[#111827]/90 backdrop-blur-xl">
@@ -126,22 +133,36 @@ export default function MisFlujos() {
             <span></span>
           </div>
 
-          {/* Filas */}
-          {filteredFlows.length === 0 ? (
-            <div className="py-12 text-center text-xs text-slate-400 dark:text-slate-500">
-              No se encontraron flujos coincidentes.
+          {/* Lista de Filas */}
+          {loading ? (
+            <div className="py-12 text-center text-xs text-slate-400">
+              <Loader2 size={20} className="animate-spin mx-auto mb-2 text-blue-500" />
+              Obteniendo datos...
+            </div>
+          ) : filteredFlows.length === 0 ? (
+            <div className="py-12 text-center text-slate-500 dark:text-slate-400">
+              <Workflow size={32} className="mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium">No se encontraron flujos</p>
+              <p className="text-xs text-slate-400 mt-1">Crea tu primer flujo para comenzar a trabajar.</p>
+              <Link
+                to="/flujos/nuevo"
+                className="inline-flex items-center gap-2 mt-4 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                <PlusCircle size={14} /> Crear flujo ahora
+              </Link>
             </div>
           ) : (
-            filteredFlows.map((f, idx) => (
+            filteredFlows.map((f) => (
               <div
-                key={f.id || idx}
-                className="grid grid-cols-[2fr_1fr_1fr_1fr_0.6fr] items-center px-6 py-4 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors border-t border-slate-100 dark:border-slate-800/60 first:border-t-0"
+                key={f.id}
+                onClick={() => navigate(`/flujos/${f.id}`)}
+                className="grid grid-cols-[2fr_1fr_1fr_1fr_0.6fr] items-center px-6 py-4 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors border-t border-slate-100 dark:border-slate-800/60 first:border-t-0 cursor-pointer group"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 w-9 h-9 text-blue-600 dark:text-blue-400 shrink-0">
+                  <div className="flex items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 w-9 h-9 text-blue-600 dark:text-blue-400 shrink-0 group-hover:scale-105 transition-transform">
                     <Workflow size={16} />
                   </div>
-                  <span className="text-sm font-medium text-slate-900 dark:text-white font-body">
+                  <span className="text-sm font-medium text-slate-900 dark:text-white font-body group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                     {f.nombre}
                   </span>
                 </div>
@@ -160,12 +181,9 @@ export default function MisFlujos() {
                   </Pill>
                 </div>
 
-                <Link
-                  to={`/flujos/${f.id}`}
-                  className="flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline justify-end font-body"
-                >
+                <div className="flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 group-hover:translate-x-1 transition-transform justify-end font-body">
                   Abrir <ChevronRight size={14} />
-                </Link>
+                </div>
               </div>
             ))
           )}
